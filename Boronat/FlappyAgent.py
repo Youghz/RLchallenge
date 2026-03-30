@@ -1,25 +1,38 @@
-from keras.models import load_model
-from collections import deque
+"""Flappy Bird agent using a pre-trained DQN model.
+
+Loads a Keras CNN model trained with Deep Q-Learning and uses it
+to select actions based on stacked grayscale frames.
+"""
+
 import numpy as np
-from skimage.transform import resize
+from collections import deque
+from keras.models import load_model
 from skimage.color import rgb2gray
+from skimage.transform import resize
 
-global stackedframes
+# --- Constants ---
 
-def process_screen(x):
-    return 255*resize(rgb2gray(x[60:, 25:310,:]),(80,80))
+FRAME_SIZE = (80, 80)
+STACK_SIZE = 4
+MODEL_PATH = "FlappyModel_900000"
+ACTIONS = [119, None]  # 119 = flap, None = do nothing
 
-model = load_model("FlappyModel_900000")
-list_actions = [119,None]
-stackedframes = deque([np.zeros((80,80)),np.zeros((80,80)),np.zeros((80,80)),np.zeros((80,80))], maxlen=4)
+# --- Frame Processing ---
 
-def FlappyPolicy(state,screen):
-    
-    screen = process_screen(screen)
-    stackedframes.append(screen)
-    frameStacked = np.stack(stackedframes, axis=-1)
-    action = list_actions[np.argmax(model.predict(np.expand_dims(frameStacked,axis=0)))]
-    return action
-    
+model = load_model(MODEL_PATH)
+frame_stack = deque([np.zeros(FRAME_SIZE) for _ in range(STACK_SIZE)], maxlen=STACK_SIZE)
 
 
+def preprocess_frame(screen: np.ndarray) -> np.ndarray:
+    """Convert raw RGB screen to 80x80 grayscale, cropped to play area."""
+    cropped = screen[60:, 25:310, :]
+    return 255 * resize(rgb2gray(cropped), FRAME_SIZE)
+
+
+def FlappyPolicy(state, screen) -> int | None:
+    """Select action using the DQN model on stacked frames."""
+    processed = preprocess_frame(screen)
+    frame_stack.append(processed)
+    stacked = np.stack(frame_stack, axis=-1)
+    q_values = model.predict(np.expand_dims(stacked, axis=0))
+    return ACTIONS[np.argmax(q_values)]
